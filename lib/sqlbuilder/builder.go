@@ -312,7 +312,7 @@ func extractArguments(fragments []interface{}) []interface{} {
 	return args
 }
 
-func columnFragments(template *templateWithUtils, columns []interface{}) ([]exql.Fragment, []interface{}, error) {
+func columnFragments(columns []interface{}) ([]exql.Fragment, []interface{}, error) {
 	l := len(columns)
 	f := make([]exql.Fragment, l)
 	args := []interface{}{}
