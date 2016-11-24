@@ -17,6 +17,8 @@ import (
 var (
 	lastSessID uint64
 	lastTxID   uint64
+
+	sessions int64
 )
 
 // HasCleanUp is implemented by structs that have a clean up routine that needs
@@ -98,6 +100,8 @@ type database struct {
 	sess   *sql.DB
 	sessMu sync.Mutex
 
+	psMu sync.Mutex
+
 	sessID uint64
 	txID   uint64
 
@@ -163,6 +167,7 @@ func (d *database) BindSession(sess *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	atomic.AddInt64(&sessions, 1)
 
 	d.name = name
 
@@ -198,11 +203,14 @@ func (d *database) Close() error {
 		d.sessMu.Unlock()
 	}()
 	if d.sess != nil {
+
 		if cleaner, ok := d.PartialDatabase.(HasCleanUp); ok {
 			cleaner.CleanUp()
 		}
+
 		d.cachedCollections.Clear()
 		d.cachedStatements.Clear() // Closes prepared statements as well.
+		atomic.AddInt64(&sessions, -1)
 
 		tx := d.Transaction()
 		if tx == nil {
@@ -267,18 +275,25 @@ func (d *database) StatementExec(stmt *exql.Statement, args ...interface{}) (res
 		}(time.Now())
 	}
 
-	var p *Stmt
-	if p, query, err = d.prepareStatement(stmt); err != nil {
-		return nil, err
-	}
-	defer p.Close()
-
-	if execer, ok := d.PartialDatabase.(HasStatementExec); ok {
-		res, err = execer.StatementExec(p.Stmt, args...)
+	if tx := d.Transaction(); tx != nil {
+		query = d.compileStatement(stmt)
+		res, err = tx.(*sqlTx).Exec(query, args...)
 		return
 	}
 
-	res, err = p.Exec(args...)
+	var ps *Stmt
+	ps, query, err = d.prepareStatement(stmt)
+	if err != nil {
+		return nil, err
+	}
+	defer ps.Close()
+
+	if execer, ok := d.PartialDatabase.(HasStatementExec); ok {
+		res, err = execer.StatementExec(ps.Stmt, args...)
+		return
+	}
+
+	res, err = ps.Exec(args...)
 	return
 }
 
@@ -300,13 +315,20 @@ func (d *database) StatementQuery(stmt *exql.Statement, args ...interface{}) (ro
 		}(time.Now())
 	}
 
-	var p *Stmt
-	if p, query, err = d.prepareStatement(stmt); err != nil {
+	if tx := d.Transaction(); tx != nil {
+		query = d.compileStatement(stmt)
+		rows, err = tx.(*sqlTx).Query(query, args...)
+		return
+	}
+
+	var ps *Stmt
+	ps, query, err = d.prepareStatement(stmt)
+	if err != nil {
 		return nil, err
 	}
-	defer p.Close()
+	defer ps.Close()
 
-	rows, err = p.Query(args...)
+	rows, err = ps.Query(args...)
 	return
 }
 
@@ -329,13 +351,19 @@ func (d *database) StatementQueryRow(stmt *exql.Statement, args ...interface{}) 
 		}(time.Now())
 	}
 
-	var p *Stmt
-	if p, query, err = d.prepareStatement(stmt); err != nil {
+	if tx := d.Transaction(); tx != nil {
+		query = d.compileStatement(stmt)
+		row, err = tx.(*sqlTx).QueryRow(query, args...), nil
+		return
+	}
+
+	var ps *Stmt
+	if ps, query, err = d.prepareStatement(stmt); err != nil {
 		return nil, err
 	}
-	defer p.Close()
+	defer ps.Close()
 
-	row, err = p.QueryRow(args...), nil
+	row, err = ps.QueryRow(args...), nil
 	return
 }
 
@@ -348,10 +376,17 @@ func (d *database) Driver() interface{} {
 	return d.sess
 }
 
+func (d *database) compileStatement(stmt *exql.Statement) string {
+	return d.PartialDatabase.CompileStatement(stmt)
+}
+
 // prepareStatement converts a *exql.Statement representation into an actual
 // *sql.Stmt.  This method will attempt to used a cached prepared statement, if
 // available.
 func (d *database) prepareStatement(stmt *exql.Statement) (*Stmt, string, error) {
+	d.psMu.Lock()
+	defer d.psMu.Unlock()
+
 	if d.sess == nil && d.Transaction() == nil {
 		return nil, "", db.ErrNotConnected
 	}
@@ -378,7 +413,11 @@ func (d *database) prepareStatement(stmt *exql.Statement) (*Stmt, string, error)
 		return nil, query, err
 	}
 
-	p := NewStatement(sqlStmt, query)
+	p, err := NewStatement(sqlStmt, query).Open()
+	if err != nil {
+		return nil, query, err
+	}
+
 	d.cachedStatements.Write(stmt, p)
 	return p, query, nil
 }
@@ -460,4 +499,9 @@ func newTxID() uint64 {
 		return 0
 	}
 	return atomic.AddUint64(&lastTxID, 1)
+}
+
+// NumDatabaseSessions returns the global number of sessions running.
+func NumDatabaseSessions() int64 {
+	return atomic.LoadInt64(&sessions)
 }
