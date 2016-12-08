@@ -26,6 +26,10 @@ var defaultMapOptions = MapOptions{
 	IncludeNil:    false,
 }
 
+type hasStringer interface {
+	Stringer() *stringer
+}
+
 type hasIsZero interface {
 	IsZero() bool
 }

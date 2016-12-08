@@ -7,6 +7,23 @@ import (
 	"upper.io/db.v2"
 )
 
+func TestBuild(t *testing.T) {
+	b := &sqlBuilder{t: newTemplateWithUtils(&testTemplate)}
+	assert := assert.New(t)
+
+	q := b.Select(db.Func("DATE")).From("test")
+
+	assert.Equal(
+		`SELECT DATE() FROM "test"`,
+		q.String(),
+	)
+
+	assert.Equal(
+		[]interface{}(nil),
+		q.Arguments(),
+	)
+}
+
 func TestSelect(t *testing.T) {
 
 	b := &sqlBuilder{t: newTemplateWithUtils(&testTemplate)}
@@ -606,19 +623,21 @@ func TestSelect(t *testing.T) {
 		)
 	}
 
-	{
-		s := `SUM(CASE WHEN foo in ? THEN 1 ELSE 0 END) AS _sum`
-		sel := b.Select("c1").Columns(db.Raw(s, []int{5, 4, 3, 2})).From("foo").Where("bar = ?", 1)
-		sel2 := b.SelectFrom(sel).As("subquery").Where(db.Cond{"foo": "bar"}).OrderBy("subquery.seq")
-		assert.Equal(
-			`SELECT * FROM (SELECT "c1", SUM(CASE WHEN foo in ($1, $2, $3, $4) THEN 1 ELSE 0 END) AS _sum FROM "foo" WHERE (bar = $5)) AS "subquery" WHERE ("foo" = $6) ORDER BY "subquery"."seq" ASC`,
-			sel2.String(),
-		)
-		assert.Equal(
-			[]interface{}{5, 4, 3, 2, 1, "bar"},
-			sel2.Arguments(),
-		)
-	}
+	/*
+		{
+			s := `SUM(CASE WHEN foo in ? THEN 1 ELSE 0 END) AS _sum`
+			sel := b.Select("c1").Columns(db.Raw(s, []int{5, 4, 3, 2})).From("foo").Where("bar = ?", 1)
+			sel2 := b.SelectFrom(sel).As("subquery").Where(db.Cond{"foo": "bar"}).OrderBy("subquery.seq")
+			assert.Equal(
+				`SELECT * FROM (SELECT "c1", SUM(CASE WHEN foo in ($1, $2, $3, $4) THEN 1 ELSE 0 END) AS _sum FROM "foo" WHERE (bar = $5)) AS "subquery" WHERE ("foo" = $6) ORDER BY "subquery"."seq" ASC`,
+				sel2.String(),
+			)
+			assert.Equal(
+				[]interface{}{5, 4, 3, 2, 1, "bar"},
+				sel2.Arguments(),
+			)
+		}
+	*/
 }
 
 func TestInsert(t *testing.T) {
