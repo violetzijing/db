@@ -136,6 +136,14 @@ func tearUp() error {
 		`CREATE SCHEMA test_schema`,
 
 		`CREATE TABLE test_schema.test (id integer)`,
+
+		`DROP TABLE IF EXISTS pg_types`,
+
+		`CREATE TABLE pg_types (
+			id serial primary key,
+			integer_array integer[],
+			string_array text[]
+		)`,
 	}
 
 	for _, s := range batch {
@@ -361,6 +369,86 @@ func TestSchemaCollection(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, 1, len(dump))
 	assert.Equal(t, 9, dump[0]["id"])
+}
+
+func TestPgTypes(t *testing.T) {
+	type PGType struct {
+		ID           int      `db:"id,omitempty"`
+		IntegerArray []int64  `db:"integer_array,int64array"`
+		StringArray  []string `db:"string_array,stringarray"`
+	}
+
+	pgTypeTests := []PGType{
+		PGType{
+			IntegerArray: []int64{1, 2, 3, 4},
+			StringArray:  []string{"a", "boo", "bar"},
+		},
+		PGType{
+			IntegerArray: []int64{1, 2, 3, 4},
+		},
+		PGType{
+			StringArray: []string{"a", "boo", "bar"},
+		},
+		PGType{
+			IntegerArray: []int64{1},
+			StringArray:  []string{"a"},
+		},
+		PGType{
+			IntegerArray: []int64{0},
+			StringArray:  []string{""},
+		},
+		PGType{
+			IntegerArray: []int64{0, 0, 0, 0},
+			StringArray:  []string{"", "", "", ""},
+		},
+		PGType{
+			IntegerArray: []int64{},
+			StringArray:  []string{},
+		},
+	}
+
+	sess := mustOpen()
+	defer sess.Close()
+
+	pgTypesCollection := sess.Collection("pg_types")
+
+	for i := range pgTypeTests {
+		id, err := pgTypesCollection.Insert(pgTypeTests[i])
+		assert.NoError(t, err)
+
+		var testPGType PGType
+		err = pgTypesCollection.Find(id).One(&testPGType)
+		assert.NoError(t, err)
+
+		assert.Equal(t, pgTypeTests[i].IntegerArray, testPGType.IntegerArray)
+		assert.Equal(t, pgTypeTests[i].StringArray, testPGType.StringArray)
+	}
+
+	for i := range pgTypeTests {
+		inserter := sess.InsertInto("pg_types")
+
+		row, err := inserter.Values(pgTypeTests[i]).Returning("id").QueryRow()
+		assert.NoError(t, err)
+
+		var id int64
+		err = row.Scan(&id)
+		assert.NoError(t, err)
+
+		var testPGType PGType
+		err = pgTypesCollection.Find(id).One(&testPGType)
+		assert.NoError(t, err)
+
+		assert.Equal(t, pgTypeTests[i].IntegerArray, testPGType.IntegerArray)
+		assert.Equal(t, pgTypeTests[i].StringArray, testPGType.StringArray)
+	}
+
+	inserter := sess.InsertInto("pg_types")
+	for i := range pgTypeTests {
+		inserter = inserter.Values(pgTypeTests[i])
+	}
+	_, err := inserter.Exec()
+	assert.NoError(t, err)
+
 }
 
 func getStats(sess sqlbuilder.Database) (map[string]int, error) {
