@@ -374,20 +374,21 @@ func TestSchemaCollection(t *testing.T) {
 func TestPgTypes(t *testing.T) {
 	type PGType struct {
 		ID           int      `db:"id,omitempty"`
-		IntegerArray []int64  `db:"integer_array,int64array"`
-		StringArray  []string `db:"string_array,stringarray"`
+		IntegerArray []int64  `db:"integer_array,int64array,omitempty"`
+		StringArray  []string `db:"string_array,stringarray,omitempty"`
 	}
 
 	pgTypeTests := []PGType{
 		PGType{
 			IntegerArray: []int64{1, 2, 3, 4},
-			StringArray:  []string{"a", "boo", "bar"},
-		},
-		PGType{
-			IntegerArray: []int64{1, 2, 3, 4},
 		},
 		PGType{
 			StringArray: []string{"a", "boo", "bar"},
+		},
+		PGType{},
+		PGType{
+			IntegerArray: []int64{1, 2, 3, 4},
+			StringArray:  []string{"a", "boo", "bar"},
 		},
 		PGType{
 			IntegerArray: []int64{1},
@@ -447,6 +448,17 @@ func TestPgTypes(t *testing.T) {
 		inserter = inserter.Values(pgTypeTests[i])
 	}
 	_, err := inserter.Exec()
+	assert.NoError(t, err)
+
+	batch := sess.InsertInto("pg_types").Batch(2)
+	go func() {
+		defer batch.Done()
+		for i := range pgTypeTests {
+			batch.Values(pgTypeTests[i])
+		}
+	}()
+
+	err = batch.Wait()
 	assert.NoError(t, err)
 
 }
