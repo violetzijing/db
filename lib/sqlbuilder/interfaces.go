@@ -351,6 +351,8 @@ type Selector interface {
 	// the Selector.
 	IteratorContext(ctx context.Context) Iterator
 
+	Union(Selector) Unioner
+
 	// Preparer provides methods for creating prepared statements.
 	Preparer
 
@@ -361,6 +363,22 @@ type Selector interface {
 	// ResultMapper provides methods to retrieve and map results.
 	ResultMapper
 
+	Argumenter
+}
+
+type Unioner interface {
+	Union(Selector) Unioner
+
+	Preparer
+
+	Getter
+
+	ResultMapper
+
+	Argumenter
+}
+
+type Argumenter interface {
 	// fmt.Stringer provides `String() string`, you can use `String()` to compile
 	// the `Selector` into a string.
 	fmt.Stringer

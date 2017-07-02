@@ -474,6 +474,17 @@ func TestSelect(t *testing.T) {
 	)
 
 	{
+		q1 := b.Select(1)
+		q2 := b.Select(2)
+		q3 := b.Select(3)
+
+		assert.Equal(
+			`SELECT 1 UNION SELECT 2 UNION SELECT 3`,
+			q1.Union(q2).Union(q3).String(),
+		)
+	}
+
+	{
 		sel := b.Select(db.Raw("CONCAT(?, ?)", "foo", "bar"))
 		assert.Equal(
 			`SELECT CONCAT($1, $2)`,

@@ -279,6 +279,12 @@ func (sel *selector) OrderBy(columns ...interface{}) Selector {
 	})
 }
 
+func (sel *selector) Union(q Selector) Unioner {
+	return sel.frame(func(sq *selectorQuery) error {
+		return nil
+	})
+}
+
 func (sel *selector) Using(columns ...interface{}) Selector {
 	return sel.frame(func(sq *selectorQuery) error {
 
