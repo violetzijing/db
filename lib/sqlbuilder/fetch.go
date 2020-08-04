@@ -159,6 +159,19 @@ func fetchResult(iter *iterator, itemT reflect.Type, columns []string) (reflect.
 		typeMap := mapper.TypeMap(itemT)
 		fieldMap := typeMap.Names
 
+		i := 0
+		j := 0
+		columnMap := map[int][]int{}
+		for i < len(columns) && j < len(typeMap.Index) {
+			if columns[i] != typeMap.Index[j].Path {
+				j++
+				continue
+			}
+			columnMap[i] = typeMap.Index[j].Index
+			i++
+			j++
+		}
+
 		for i, k := range columns {
 			fi, ok := fieldMap[k]
 			if !ok {
@@ -171,7 +184,7 @@ func fetchResult(iter *iterator, itemT reflect.Type, columns []string) (reflect.
 				return item, errDeprecatedJSONBTag
 			}
 
-			f := reflectx.FieldByIndexes(item, fi.Index)
+			f := reflectx.FieldByIndexes(item, columnMap[i])
 			values[i] = f.Addr().Interface()
 
 			if u, ok := values[i].(db.Unmarshaler); ok {
